@@ -12,29 +12,22 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git(
-                    url: 'https://github.com/muqeemishtiaq/React-ci.git',
-                    credentialsId: 'github-credentials', // Add your GitHub credentials ID
-                    branch: 'main'
-                )
+                git url: 'https://github.com/muqeemishtiaq/React-ci.git'
             }
         }
         
-        stage('Build Docker Images') {
-            parallel {
-                stage('Build Frontend') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "-f frontend/Dockerfile ./frontend")
-                        }
-                    }
+        stage('Build Frontend') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "-f frontend/Dockerfile ./frontend")
                 }
-                stage('Build Backend') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "-f backend/Dockerfile ./backend")
-                        }
-                    }
+            }
+        }
+        
+        stage('Build Backend') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "-f backend/Dockerfile ./backend")
                 }
             }
         }
@@ -42,9 +35,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    // Add your actual test commands here
-                    sh 'echo "Running frontend tests..."'
-                    sh 'echo "Running backend tests..."'
+                    sh 'echo "Running tests..."'
                 }
             }
         }
@@ -52,12 +43,9 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
+                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
                         docker.image("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}").push()
                         docker.image("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}").push()
-                        // Also push as latest
-                        docker.image("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}").push('latest')
-                        docker.image("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}").push('latest')
                     }
                 }
             }
@@ -67,36 +55,14 @@ pipeline {
             steps {
                 script {
                     sshagent([SSH_CREDENTIALS]) {
-                        // Create deployment script on the fly
-                        writeFile file: 'deploy.sh', text: """
-                            #!/bin/bash
-                            BUILD_NUMBER=\$1
-                            echo "Deploying build \$BUILD_NUMBER"
-                            
-                            # Pull latest images
-                            docker pull muqeem112/react-frontend:\$BUILD_NUMBER
-                            docker pull muqeem112/react-backend:\$BUILD_NUMBER
-                            
-                            # Stop and remove existing containers
-                            docker-compose down || true
-                            
-                            # Start new containers
-                            docker-compose up -d
-                            
-                            # Clean up old images
-                            docker image prune -f
-                        """
-                        
-                        // Copy files to VM
                         sh """
-                            scp -o StrictHostKeyChecking=no docker-compose.yml ${SSH_CREDENTIALS_USR}@${VM_IP}:/tmp/
-                            scp -o StrictHostKeyChecking=no deploy.sh ${SSH_CREDENTIALS_USR}@${VM_IP}:/tmp/
+                            scp -o StrictHostKeyChecking=no docker-compose.yml ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
+                            scp -o StrictHostKeyChecking=no deploy.sh ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
                         """
                         
-                        // Execute deployment
                         sh """
                             ssh -o StrictHostKeyChecking=no ${SSH_CREDENTIALS_USR}@${VM_IP} '
-                                cd /tmp &&
+                                cd /home/${SSH_CREDENTIALS_USR} &&
                                 chmod +x deploy.sh &&
                                 ./deploy.sh ${BUILD_NUMBER}
                             '
@@ -114,11 +80,10 @@ pipeline {
         }
         success {
             echo 'Deployment completed successfully!'
-            sh "echo 'Frontend: http://${VM_IP}'"
-            sh "echo 'Backend API: http://${VM_IP}:5000'"
+            sh "echo 'Application deployed: http://${VM_IP}'"
         }
         failure {
-            echo 'Deployment failed! Check the logs above for errors.'
+            echo 'Deployment failed!'
         }
     }
 }
