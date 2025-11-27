@@ -95,23 +95,23 @@ EOF
             }
         }
         
-        stage('Push to Docker Hub') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'DOCKERHUB_CREDENTIALS',
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )]) {
-                        sh """
-                            docker login -u \$DOCKER_USERNAME -p \$DOCKER_PASSWORD
-                            docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
-                            docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
-                        """
-                    }
-                }
+       stage('Push to Docker Hub') {
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'docker-hub-credentials',  // Changed to match your actual ID
+                usernameVariable: 'DOCKER_USERNAME',
+                passwordVariable: 'DOCKER_PASSWORD'
+            )]) {
+                sh """
+                    docker login -u \$DOCKER_USERNAME -p \$DOCKER_PASSWORD
+                    docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
+                    docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
+                """
             }
         }
+    }
+}
         
         stage('Deploy to Azure VM') {
             steps {
