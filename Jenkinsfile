@@ -9,14 +9,15 @@ pipeline {
         SSH_CREDENTIALS = credentials('azure-vm-ssh')
     }
     
-    stage('Checkout') {
+    stages {  // ← ADD THIS MISSING LINE
+        stage('Checkout') {
             steps {
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],  
                     extensions: [],
                     userRemoteConfigs: [[
-                        credentialsId: 'your-github-credentials',
+                        credentialsId: 'your-github-credentials',  // Make sure this credential ID exists
                         url: 'https://github.com/muqeemishtiaq/React-ci.git'
                     ]]
                 ])
@@ -78,7 +79,7 @@ pipeline {
                 }
             }
         }
-    }
+    }  // ← CLOSING BRACE FOR STAGES BLOCK
     
     post {
         always {
