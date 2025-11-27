@@ -1,25 +1,93 @@
 pipeline {
     agent any
-
+    
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_IMAGE_FRONTEND = 'muqeem112/react-frontend'
+        DOCKER_IMAGE_BACKEND = 'muqeem112/react-backend'
+        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
+        VM_IP = '20.205.24.111'
+        SSH_CREDENTIALS = credentials('azure-vm-ssh')
+    }
+    
     stages {
-        stage('Clone Repository') {
+        stage('Checkout') {
             steps {
-                git branch: 'main',
-                url: 'https://github.com/YOUR_USER/YOUR_REPO.git'
+                git branch: 'main', url: 'https://github.com/muqeemishtiaq/React-ci.git'
             }
         }
-
-        stage('Build Docker Images') {
+        
+        stage('Build Frontend') {
             steps {
-                sh 'docker-compose build'
+                script {
+                    docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "-f frontend/Dockerfile ./frontend")
+                }
             }
         }
-
-        stage('Run Containers') {
+        
+        stage('Build Backend') {
             steps {
-                sh 'docker-compose down'
-                sh 'docker-compose up -d'
+                script {
+                    docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "-f backend/Dockerfile ./backend")
+                }
             }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                script {
+                    
+                    sh 'echo "Running tests..."'
+                }
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
+                        docker.image("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}").push()
+                        docker.image("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}").push()
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Azure VM') {
+            steps {
+                script {
+                    
+                    sshagent([SSH_CREDENTIALS]) {
+                        sh """
+                            scp -o StrictHostKeyChecking=no docker-compose.yml ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
+                            scp -o StrictHostKeyChecking=no deploy.sh ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
+                        """
+                        
+                        
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${SSH_CREDENTIALS_USR}@${VM_IP} '
+                                cd /home/${SSH_CREDENTIALS_USR} &&
+                                chmod +x deploy.sh &&
+                                ./deploy.sh ${BUILD_NUMBER}
+                            '
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up workspace...'
+            cleanWs()
+        }
+        success {
+            echo 'Deployment completed successfully!'
+            sh "echo 'Application deployed: http://${VM_IP}'"
+        }
+        failure {
+            echo 'Deployment failed!'
         }
     }
 }
