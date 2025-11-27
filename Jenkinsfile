@@ -9,7 +9,7 @@ pipeline {
         SSH_CREDENTIALS = credentials('azure-vm-ssh')
     }
     
-    stages {  // ← ADD THIS MISSING LINE
+    stages {
         stage('Checkout') {
             steps {
                 checkout([
@@ -17,17 +17,37 @@ pipeline {
                     branches: [[name: '*/main']],  
                     extensions: [],
                     userRemoteConfigs: [[
-                        credentialsId: 'your-github-credentials',  // Make sure this credential ID exists
+                        credentialsId: 'Github',  // ← Changed to match your credential ID
                         url: 'https://github.com/muqeemishtiaq/React-ci.git'
                     ]]
                 ])
             }
         }
         
+        stage('Verify Files') {
+            steps {
+                script {
+                    // Check if required files exist
+                    sh '''
+                        echo "Checking repository structure..."
+                        ls -la
+                        echo "Frontend directory:"
+                        ls -la frontend/ || echo "Frontend directory not found"
+                        echo "Backend directory:"
+                        ls -la backend/ || echo "Backend directory not found"
+                    '''
+                }
+            }
+        }
+        
         stage('Build Frontend') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "-f frontend/Dockerfile ./frontend")
+                    // First check if Dockerfile exists
+                    sh 'test -f frontend/Dockerfile && echo "Dockerfile found" || echo "Dockerfile missing"'
+                    
+                    // Build the Docker image
+                    docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "./frontend")
                 }
             }
         }
@@ -35,7 +55,11 @@ pipeline {
         stage('Build Backend') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "-f backend/Dockerfile ./backend")
+                    // First check if Dockerfile exists
+                    sh 'test -f backend/Dockerfile && echo "Dockerfile found" || echo "Dockerfile missing"'
+                    
+                    // Build the Docker image
+                    docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "./backend")
                 }
             }
         }
@@ -44,6 +68,7 @@ pipeline {
             steps {
                 script {
                     sh 'echo "Running tests..."'
+                    // Add your actual test commands here
                 }
             }
         }
@@ -79,7 +104,7 @@ pipeline {
                 }
             }
         }
-    }  // ← CLOSING BRACE FOR STAGES BLOCK
+    }
     
     post {
         always {

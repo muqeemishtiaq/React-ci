@@ -26,3 +26,5 @@ echo "Checking container status..."
 docker ps
 
 echo "Deployment completed for build: ${BUILD_NUMBER}"
+
+# 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
