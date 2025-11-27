@@ -48,15 +48,6 @@ EXPOSE 5000
 CMD ["npm", "start"]
 EOF
                         fi
-                        
-                        echo "=== Verification ==="
-                        echo "Frontend Dockerfile:"
-                        ls -la frontend/Dockerfile
-                        cat frontend/Dockerfile
-                        
-                        echo "Backend Dockerfile:"
-                        ls -la backend/Dockerfile
-                        cat backend/Dockerfile
                     '''
                 }
             }
@@ -95,42 +86,43 @@ EOF
             }
         }
         
-       stage('Push to Docker Hub') {
-    steps {
-        script {
-            withCredentials([usernamePassword(
-                credentialsId: 'docker-hub-credentials',  // Changed to match your actual ID
-                usernameVariable: 'DOCKER_USERNAME',
-                passwordVariable: 'DOCKER_PASSWORD'
-            )]) {
-                sh """
-                    docker login -u \$DOCKER_USERNAME -p \$DOCKER_PASSWORD
-                    docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
-                    docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
-                """
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )]) {
+                        sh """
+                            docker login -u \$DOCKER_USERNAME -p \$DOCKER_PASSWORD
+                            docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
+                            docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
+                        """
+                    }
+                }
             }
         }
-    }
-}
+        
         stage('Deploy to Azure VM') {
-    steps {
-        script {
-            withCredentials([sshUserPrivateKey(
-                credentialsId: 'azure-vm-ssh',  // Changed to match your actual ID
-                usernameVariable: 'SSH_USERNAME',
-                keyFileVariable: 'SSH_KEY'
-            )]) {
-                sh """
-                    ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@your-azure-vm-ip '
-                        cd /path/to/your/app &&
-                        chmod +x deploy.sh &&
-                        ./deploy.sh ${BUILD_NUMBER}
-                    '
-                """
+            steps {
+                script {
+                    withCredentials([sshUserPrivateKey(
+                        credentialsId: 'azure-vm-ssh',
+                        usernameVariable: 'SSH_USERNAME',
+                        keyFileVariable: 'SSH_KEY'
+                    )]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@YOUR_VM_IP '
+                                cd /home/azureuser/app &&
+                                chmod +x deploy.sh &&
+                                ./deploy.sh ${BUILD_NUMBER}
+                            '
+                        """
+                    }
+                }
             }
         }
-    }
-}
     }
     
     post {
