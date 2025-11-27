@@ -112,27 +112,25 @@ EOF
         }
     }
 }
-        
         stage('Deploy to Azure VM') {
-            steps {
-                script {
-                    withCredentials([sshUserPrivateKey(
-                        credentialsId: 'SSH_CREDENTIALS',
-                        usernameVariable: 'SSH_USERNAME',
-                        keyFileVariable: 'SSH_KEY'
-                    )]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@your-azure-vm-ip '
-                                cd /path/to/your/app &&
-                                chmod +x deploy.sh &&
-                                ./deploy.sh ${BUILD_NUMBER}
-                            '
-                        """
-                    }
-                }
+    steps {
+        script {
+            withCredentials([sshUserPrivateKey(
+                credentialsId: 'azure-vm-ssh',  // Changed to match your actual ID
+                usernameVariable: 'SSH_USERNAME',
+                keyFileVariable: 'SSH_KEY'
+            )]) {
+                sh """
+                    ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@your-azure-vm-ip '
+                        cd /path/to/your/app &&
+                        chmod +x deploy.sh &&
+                        ./deploy.sh ${BUILD_NUMBER}
+                    '
+                """
             }
         }
     }
+}
     
     post {
         always {
