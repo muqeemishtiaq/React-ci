@@ -12,30 +12,50 @@ pipeline {
             }
         }
         
-        stage('Verify Files and Structure') {
+        stage('Verify and Create Dockerfiles') {
             steps {
                 script {
-                    echo "=== Checking Repository Structure ==="
+                    echo "=== Checking and Creating Dockerfiles ==="
                     sh '''
                         echo "Current directory:"
                         pwd
-                        echo "Listing all files:"
-                        ls -la
                         
-                        echo "=== Frontend Directory ==="
-                        ls -la frontend/
-                        echo "Frontend Dockerfile exists:" 
-                        test -f frontend/Dockerfile && echo "YES" || echo "NO"
+                        # Create frontend Dockerfile if missing
+                        if [ ! -f frontend/Dockerfile ]; then
+                            echo "Creating frontend Dockerfile..."
+                            cat > frontend/Dockerfile << 'EOF'
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json .
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+EOF
+                        fi
                         
-                        echo "=== Backend Directory ==="
-                        ls -la backend/
-                        echo "Backend Dockerfile exists:"
-                        test -f backend/Dockerfile && echo "YES" || echo "NO"
+                        # Create backend Dockerfile if missing
+                        if [ ! -f backend/Dockerfile ]; then
+                            echo "Creating backend Dockerfile..."
+                            cat > backend/Dockerfile << 'EOF'
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json .
+RUN npm install
+COPY . .
+EXPOSE 5000
+CMD ["npm", "start"]
+EOF
+                        fi
                         
-                        echo "=== Dockerfile Contents ==="
+                        echo "=== Verification ==="
                         echo "Frontend Dockerfile:"
+                        ls -la frontend/Dockerfile
                         cat frontend/Dockerfile
+                        
                         echo "Backend Dockerfile:"
+                        ls -la backend/Dockerfile
                         cat backend/Dockerfile
                     '''
                 }
@@ -70,7 +90,6 @@ pipeline {
             steps {
                 script {
                     echo "Running tests..."
-                    // Add your test commands here
                     sh "echo 'Tests would run here'"
                 }
             }
@@ -98,7 +117,7 @@ pipeline {
             steps {
                 script {
                     withCredentials([sshUserPrivateKey(
-                        credentialsId: 'SSH_CREDENTIALS', 
+                        credentialsId: 'SSH_CREDENTIALS',
                         usernameVariable: 'SSH_USERNAME',
                         keyFileVariable: 'SSH_KEY'
                     )]) {
