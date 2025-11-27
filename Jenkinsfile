@@ -9,10 +9,17 @@ pipeline {
         SSH_CREDENTIALS = credentials('azure-vm-ssh')
     }
     
-    stages {
-        stage('Checkout') {
+    stage('Checkout') {
             steps {
-                git url: 'https://github.com/muqeemishtiaq/React-ci.git'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],  
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        credentialsId: 'your-github-credentials',
+                        url: 'https://github.com/muqeemishtiaq/React-ci.git'
+                    ]]
+                ])
             }
         }
         
