@@ -104,7 +104,7 @@ EOF
             }
         }
         
-      stage('Deploy to Azure VM') {
+    stage('Deploy to Azure VM') {
     steps {
         script {
             withCredentials([sshUserPrivateKey(
@@ -114,8 +114,87 @@ EOF
             )]) {
                 sh """
                     ssh -o StrictHostKeyChecking=no -i \$SSH_KEY azureuser@20.205.24.111 '
-                        cd /home/azureuser/app &&
-                        chmod +x deploy.sh &&
+                        # Create directory if it doesn't exist
+                        mkdir -p /home/azureuser/app
+                        cd /home/azureuser/app
+                        
+                        # Create deploy.sh if missing
+                        if [ ! -f deploy.sh ]; then
+                            cat > deploy.sh << \"EOF\"
+#!/bin/bash
+
+BUILD_NUMBER=\\\$1
+DOCKER_IMAGE_FRONTEND=\"muqeem112/react-frontend\"
+DOCKER_IMAGE_BACKEND=\"muqeem112/react-backend\"
+
+echo \"Stopping existing containers...\"
+docker-compose down || true
+
+echo \"Removing old images...\"
+docker rmi \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER} || true
+docker rmi \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER} || true
+
+echo \"Pulling new images...\"
+docker pull \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER}
+docker pull \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER}
+
+echo \"Updating docker-compose.yml with new image tags...\"
+sed -i \"s|image: \\\${DOCKER_IMAGE_FRONTEND}:.*|image: \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER}|\" docker-compose.yml
+sed -i \"s|image: \\\${DOCKER_IMAGE_BACKEND}:.*|image: \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER}|\" docker-compose.yml
+
+echo \"Starting containers...\"
+docker-compose up -d
+
+echo \"Checking container status...\"
+docker ps
+
+echo \"Deployment completed for build: \\\${BUILD_NUMBER}\"
+EOF
+                        fi
+                        
+                        # Create docker-compose.yml if missing
+                        if [ ! -f docker-compose.yml ]; then
+                            cat > docker-compose.yml << \"EOF\"
+version: '3.8'
+
+services:
+  frontend:
+    image: muqeem112/react-frontend:latest
+    ports:
+      - \"3000:3000\"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://20.205.24.111:5000
+
+  backend:
+    image: muqeem112/react-backend:latest
+    ports:
+      - \"5000:5000\"
+    environment:
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=password
+      - DB_NAME=mernapp
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=mernapp
+    ports:
+      - \"3306:3306\"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
+EOF
+                        fi
+                        
+                        chmod +x deploy.sh
                         ./deploy.sh ${BUILD_NUMBER}
                     '
                 """
