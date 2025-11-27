@@ -1,40 +1,42 @@
 pipeline {
     agent any
-    
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-        DOCKER_IMAGE_FRONTEND = 'muqeem112/react-frontend'
-        DOCKER_IMAGE_BACKEND = 'muqeem112/react-backend'
-        VM_IP = '20.205.24.111'
-        SSH_CREDENTIALS = credentials('azure-vm-ssh')
+        DOCKER_IMAGE_FRONTEND = "muqeem112/react-frontend"
+        DOCKER_IMAGE_BACKEND = "muqeem112/react-backend"
+        BUILD_NUMBER = "${env.BUILD_ID}"
     }
-    
     stages {
         stage('Checkout') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],  
-                    extensions: [],
-                    userRemoteConfigs: [[
-                        credentialsId: 'Github',  // ← Changed to match your credential ID
-                        url: 'https://github.com/muqeemishtiaq/React-ci.git'
-                    ]]
-                ])
+                checkout scm
             }
         }
         
-        stage('Verify Files') {
+        stage('Verify Files and Structure') {
             steps {
                 script {
-                    // Check if required files exist
+                    echo "=== Checking Repository Structure ==="
                     sh '''
-                        echo "Checking repository structure..."
+                        echo "Current directory:"
+                        pwd
+                        echo "Listing all files:"
                         ls -la
-                        echo "Frontend directory:"
-                        ls -la frontend/ || echo "Frontend directory not found"
-                        echo "Backend directory:"
-                        ls -la backend/ || echo "Backend directory not found"
+                        
+                        echo "=== Frontend Directory ==="
+                        ls -la frontend/
+                        echo "Frontend Dockerfile exists:" 
+                        test -f frontend/Dockerfile && echo "YES" || echo "NO"
+                        
+                        echo "=== Backend Directory ==="
+                        ls -la backend/
+                        echo "Backend Dockerfile exists:"
+                        test -f backend/Dockerfile && echo "YES" || echo "NO"
+                        
+                        echo "=== Dockerfile Contents ==="
+                        echo "Frontend Dockerfile:"
+                        cat frontend/Dockerfile
+                        echo "Backend Dockerfile:"
+                        cat backend/Dockerfile
                     '''
                 }
             }
@@ -43,11 +45,11 @@ pipeline {
         stage('Build Frontend') {
             steps {
                 script {
-                    // First check if Dockerfile exists
-                    sh 'test -f frontend/Dockerfile && echo "Dockerfile found" || echo "Dockerfile missing"'
-                    
-                    // Build the Docker image
-                    docker.build("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}", "./frontend")
+                    echo "Building Frontend Docker image..."
+                    sh """
+                        cd frontend
+                        docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} .
+                    """
                 }
             }
         }
@@ -55,11 +57,11 @@ pipeline {
         stage('Build Backend') {
             steps {
                 script {
-                    // First check if Dockerfile exists
-                    sh 'test -f backend/Dockerfile && echo "Dockerfile found" || echo "Dockerfile missing"'
-                    
-                    // Build the Docker image
-                    docker.build("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}", "./backend")
+                    echo "Building Backend Docker image..."
+                    sh """
+                        cd backend
+                        docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} .
+                    """
                 }
             }
         }
@@ -67,8 +69,9 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    sh 'echo "Running tests..."'
-                    // Add your actual test commands here
+                    echo "Running tests..."
+                    // Add your test commands here
+                    sh "echo 'Tests would run here'"
                 }
             }
         }
@@ -76,9 +79,16 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
-                        docker.image("${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}").push()
-                        docker.image("${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}").push()
+                    withCredentials([usernamePassword(
+                        credentialsId: 'DOCKERHUB_CREDENTIALS',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )]) {
+                        sh """
+                            docker login -u \$DOCKER_USERNAME -p \$DOCKER_PASSWORD
+                            docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
+                            docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
+                        """
                     }
                 }
             }
@@ -87,15 +97,14 @@ pipeline {
         stage('Deploy to Azure VM') {
             steps {
                 script {
-                    sshagent([SSH_CREDENTIALS]) {
+                    withCredentials([sshUserPrivateKey(
+                        credentialsId: 'SSH_CREDENTIALS', 
+                        usernameVariable: 'SSH_USERNAME',
+                        keyFileVariable: 'SSH_KEY'
+                    )]) {
                         sh """
-                            scp -o StrictHostKeyChecking=no docker-compose.yml ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
-                            scp -o StrictHostKeyChecking=no deploy.sh ${SSH_CREDENTIALS_USR}@${VM_IP}:/home/${SSH_CREDENTIALS_USR}/
-                        """
-                        
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${SSH_CREDENTIALS_USR}@${VM_IP} '
-                                cd /home/${SSH_CREDENTIALS_USR} &&
+                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@your-azure-vm-ip '
+                                cd /path/to/your/app &&
                                 chmod +x deploy.sh &&
                                 ./deploy.sh ${BUILD_NUMBER}
                             '
@@ -113,7 +122,6 @@ pipeline {
         }
         success {
             echo 'Deployment completed successfully!'
-            sh "echo 'Application deployed: http://${VM_IP}'"
         }
         failure {
             echo 'Deployment failed!'
