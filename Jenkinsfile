@@ -104,34 +104,122 @@ EOF
             }
         }
         
-    stage('Deploy to Azure VM') {
-    steps {
-        script {
-            withCredentials([sshUserPrivateKey(
-                credentialsId: 'azure-vm-ssh',
-                usernameVariable: 'SSH_USERNAME',
-                keyFileVariable: 'SSH_KEY'
-            )]) {
-                sh """
-                    ssh -o StrictHostKeyChecking=no -i \$SSH_KEY azureuser@20.205.24.111 '
-                        # Try using /opt directory which often has different permissions
-                        sudo mkdir -p /opt/app || mkdir -p /tmp/app
-                        cd /opt/app || cd /tmp/app
-                        
-                        # Rest of the deployment script...
-                        cat > deploy.sh << \"EOF\"
+        stage('Deploy to Azure VM') {
+            steps {
+                script {
+                    withCredentials([sshUserPrivateKey(
+                        credentialsId: 'azure-vm-ssh',
+                        usernameVariable: 'SSH_USERNAME',
+                        keyFileVariable: 'SSH_KEY'
+                    )]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY azureuser@20.205.24.111 '
+                                # Check current user and available directories
+                                echo "Current user: \$(whoami)"
+                                echo "Home directory: \$HOME"
+                                echo "Available directories:"
+                                ls -la / || echo "Cannot list root"
+                                
+                                # Try different directory locations
+                                if [ -d "/home/azureuser" ]; then
+                                    cd /home/azureuser
+                                    mkdir -p app
+                                    cd app
+                                elif [ -d "/opt" ]; then
+                                    sudo mkdir -p /opt/app || mkdir -p /tmp/app
+                                    cd /opt/app || cd /tmp/app
+                                else
+                                    mkdir -p /tmp/app
+                                    cd /tmp/app
+                                fi
+                                
+                                echo "Working in: \$(pwd)"
+                                
+                                # Create complete deploy.sh script
+                                cat > deploy.sh << \"ENDDEPLOY\"
 #!/bin/bash
 BUILD_NUMBER=\\\$1
-# ... rest of deploy.sh content
-EOF
-                        chmod +x deploy.sh
-                        ./deploy.sh ${BUILD_NUMBER}
-                    '
-                """
+DOCKER_IMAGE_FRONTEND=\"muqeem112/react-frontend\"
+DOCKER_IMAGE_BACKEND=\"muqeem112/react-backend\"
+
+echo \"=== Starting Deployment for build: \\\$BUILD_NUMBER ===\"
+
+echo \"Stopping existing containers...\"
+docker-compose down || true
+
+echo \"Removing old images...\"
+docker rmi \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER} || true
+docker rmi \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER} || true
+
+echo \"Pulling new images...\"
+docker pull \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER}
+docker pull \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER}
+
+echo \"Creating docker-compose.yml if missing...\"
+if [ ! -f docker-compose.yml ]; then
+    cat > docker-compose.yml << \"COMPOSE\"
+version: '3.8'
+services:
+  frontend:
+    image: muqeem112/react-frontend:latest
+    ports:
+      - \"3000:3000\"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://20.205.24.111:5000
+
+  backend:
+    image: muqeem112/react-backend:latest
+    ports:
+      - \"5000:5000\"
+    environment:
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=password
+      - DB_NAME=mernapp
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=mernapp
+    ports:
+      - \"3306:3306\"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
+COMPOSE
+fi
+
+echo \"Updating docker-compose.yml with new image tags...\"
+sed -i \"s|image: \\\${DOCKER_IMAGE_FRONTEND}:.*|image: \\\${DOCKER_IMAGE_FRONTEND}:\\\${BUILD_NUMBER}|\" docker-compose.yml
+sed -i \"s|image: \\\${DOCKER_IMAGE_BACKEND}:.*|image: \\\${DOCKER_IMAGE_BACKEND}:\\\${BUILD_NUMBER}|\" docker-compose.yml
+
+echo \"Starting containers...\"
+docker-compose up -d
+
+echo \"Checking container status...\"
+docker ps
+
+echo \"=== Deployment completed for build: \\\$BUILD_NUMBER ===\"
+ENDDEPLOY
+
+                                chmod +x deploy.sh
+                                echo "Running deployment script..."
+                                ./deploy.sh ${BUILD_NUMBER}
+                            '
+                        """
+                    }
+                }
             }
         }
     }
-}
+
     post {
         always {
             echo 'Cleaning up workspace...'
