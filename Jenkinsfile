@@ -113,7 +113,7 @@ EOF
                         keyFileVariable: 'SSH_KEY'
                     )]) {
                         sh """
-                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@YOUR_VM_IP '
+                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@20.205.24.111 '
                                 cd /home/azureuser/app &&
                                 chmod +x deploy.sh &&
                                 ./deploy.sh ${BUILD_NUMBER}
