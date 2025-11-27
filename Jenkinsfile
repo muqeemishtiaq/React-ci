@@ -104,23 +104,17 @@ EOF
             }
         }
         
-       stage('Deploy to Azure VM') {
+      stage('Deploy to Azure VM') {
     steps {
         script {
-            echo "Deploying to Azure VM..."
             withCredentials([sshUserPrivateKey(
                 credentialsId: 'azure-vm-ssh',
                 usernameVariable: 'SSH_USERNAME',
                 keyFileVariable: 'SSH_KEY'
             )]) {
                 sh """
-                    echo "Testing SSH connection..."
-                    ssh -o StrictHostKeyChecking=no -i \$SSH_KEY \$SSH_USERNAME@20.205.24.111 '
-                        echo "Connected to VM successfully"
-                        whoami
-                        pwd
-                        ls -la /home/
-                        cd /home/\$USER/app &&
+                    ssh -o StrictHostKeyChecking=no -i \$SSH_KEY azureuser@20.205.24.111 '
+                        cd /home/azureuser/app &&
                         chmod +x deploy.sh &&
                         ./deploy.sh ${BUILD_NUMBER}
                     '
@@ -129,7 +123,6 @@ EOF
         }
     }
 }
-    }
     
     post {
         always {
